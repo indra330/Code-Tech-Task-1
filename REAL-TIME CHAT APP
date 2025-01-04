@@ -1,0 +1,137 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: 'http://localhost:3000', // React app URL
+        methods: ['GET', 'POST'],
+    },
+});
+
+app.use(cors());
+app.get('/', (req, res) => {
+    res.send('Server is running...');
+});
+
+// Socket.IO Events
+io.on('connection', (socket) => {
+    console.log(`User connected: ${socket.id}`);
+
+    // Join Room
+    socket.on('join_room', (room) => {
+        socket.join(room);
+        console.log(`User ${socket.id} joined room ${room}`);
+    });
+
+    // Handle Message
+    socket.on('send_message', (data) => {
+        console.log(data);
+        io.to(data.room).emit('receive_message', data);
+    });
+
+    // Disconnect
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
+    });
+});
+
+const PORT = 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+import React, { useState } from 'react';
+import io from 'socket.io-client';
+
+const socket = io.connect('http://localhost:5000'); // Backend URL
+
+const Chat = () => {
+    const [username, setUsername] = useState('');
+    const [room, setRoom] = useState('');
+    const [message, setMessage] = useState('');
+    const [messageList, setMessageList] = useState([]);
+
+    const joinRoom = () => {
+        if (username !== '' && room !== '') {
+            socket.emit('join_room', room);
+        }
+    };
+
+    const sendMessage = async () => {
+        if (message !== '') {
+            const messageData = {
+                room: room,
+                author: username,
+                message: message,
+                time:
+                    new Date(Date.now()).getHours() +
+                    ':' +
+                    new Date(Date.now()).getMinutes(),
+            };
+
+            await socket.emit('send_message', messageData);
+            setMessageList((list) => [...list, messageData]);
+            setMessage('');
+        }
+    };
+
+    socket.on('receive_message', (data) => {
+        setMessageList((list) => [...list, data]);
+    });
+
+    return (
+        <div>
+            <h3>Join A Chat</h3>
+            <input
+                type="text"
+                placeholder="Username"
+                onChange={(e) => setUsername(e.target.value)}
+            />
+            <input
+                type="text"
+                placeholder="Room"
+                onChange={(e) => setRoom(e.target.value)}
+            />
+            <button onClick={joinRoom}>Join Room</button>
+            <div>
+                <h3>Chat Room</h3>
+                <div>
+                    {messageList.map((msg, index) => (
+                        <div key={index}>
+                            <p>
+                                <b>{msg.author}:</b> {msg.message}{' '}
+                                <span>{msg.time}</span>
+                            </p>
+                        </div>
+                    ))}
+                </div>
+                <input
+                    type="text"
+                    value={message}
+                    placeholder="Message"
+                    onChange={(e) => setMessage(e.target.value)}
+                />
+                <button onClick={sendMessage}>Send</button>
+            </div>
+        </div>
+    );
+};
+
+export default Chat;
+
+
+import React from 'react';
+import Chat from './Chat';
+
+function App() {
+    return (
+        <div className="App">
+            <Chat />
+        </div>
+    );
+}
+
+export default App;
